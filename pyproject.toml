@@ -1,13 +1,6 @@
 [build-system]
 requires = [
     "setuptools>=42",
-    "wheel",
-    "torch",
-    "numpy",
-    "gym",
-    "scikit-image",
-    "opencv-python",
-    "pillow",
-    "shutil"
+    "wheel"
 ]
 build-backend = "setuptools.build_meta"
