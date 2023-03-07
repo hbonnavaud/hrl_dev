@@ -55,7 +55,7 @@ class DDPG(ValueBasedAgent):
             action = action.cpu().detach().numpy()
 
             # Fit action to our action_space
-            action = self.scale_action(action, Box(-1, 1, (2,)))
+            action = self.scale_action(action, Box(-1, 1, (self.nb_actions,)))
         return action
 
     def learn_interaction(self, *interaction_data):
@@ -75,12 +75,12 @@ class DDPG(ValueBasedAgent):
 
     def learn(self):
         assert not self.under_test
-        if len(self.replay_buffer) > self.batch_size:
+        if not self.under_test and len(self.replay_buffer) > self.batch_size:
             states, actions, rewards, new_states, dones = self.sample_training_batch()
 
             with torch.no_grad():
                 target_actions = self.target_actor(new_states)
-                target_actions = self.scale_action(target_actions, Box(-1, 1, (2,)))
+                target_actions = self.scale_action(target_actions, Box(-1, 1, (self.nb_actions,)))
                 critic_value_ = self.target_critic(torch.concat((new_states, target_actions), dim=-1))
             critic_value = self.critic(torch.concat((states, actions), dim=-1))
             #target = torch.addcmul(rewards, self.gamma, 1 - dones, critic_value_.squeeze()).view(self.batch_size, 1)
@@ -89,7 +89,7 @@ class DDPG(ValueBasedAgent):
             self.critic.learn(critic_loss)
 
             actions = self.actor(states)
-            actions = self.scale_action(actions, Box(-1, 1, (2,)))
+            actions = self.scale_action(actions, Box(-1, 1, (self.nb_actions,)))
             actor_loss = - self.critic(torch.concat((states, actions), dim=-1))
             actor_loss = torch.mean(actor_loss)
             self.actor.learn(actor_loss)

@@ -98,7 +98,7 @@ class SAC(ValueBasedAgent):
         actions = torch.tanh(raw_actions)
         log_probs -= torch.log(1 - actions.pow(2) + 1e-6)
         log_probs = log_probs.sum(-1)
-        actions = self.scale_action(actions, Box(-1, 1, (2,)))
+        actions = self.scale_action(actions, Box(-1, 1, (self.nb_actions,)))
         return actions, log_probs
 
     def action(self, state, explore=True):
@@ -120,7 +120,7 @@ class SAC(ValueBasedAgent):
         return critic_value.detach().numpy()
 
     def learn(self):
-        if self.under_test or len(self.replay_buffer) > self.batch_size:
+        if not self.under_test and len(self.replay_buffer) > self.batch_size:
             states, actions, rewards, new_states, done = self.sample_training_batch()
 
             # Training critic

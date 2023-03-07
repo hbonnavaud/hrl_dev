@@ -50,6 +50,9 @@ class Environment(ABC):
 
         return np.random.rand(), 0.0, False
 
+    def get_state(self):
+        return self.state.copy()
+
     @abc.abstractmethod
     def render(self) -> np.ndarray:
         """

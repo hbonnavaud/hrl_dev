@@ -44,7 +44,7 @@ class NavigationEnv(Environment, abc.ABC):
 
         self.maze_map = np.array(importlib.import_module("hbrl.environments.maps." + map_tag.value).maze_array)
         self.height, self.width = self.maze_map.shape
-        self.agent_state = None
+        self.state = None
         self.reset_anywhere = reset_anywhere
 
         high = np.array([self.width, self.height]) / 2
@@ -100,17 +100,17 @@ class NavigationEnv(Environment, abc.ABC):
 
     def reset(self):
         if self.reset_anywhere:
-            self.agent_state = self.sample_reachable_state()
+            self.state = self.sample_reachable_state()
         else:
             start_tile = np.flip(random.choice(np.argwhere(self.maze_map == 2)))
-            self.agent_state = self.get_state_from_coordinates(*start_tile, uniformly_sampled=False)
-        return self.agent_state
+            self.state = self.get_state_from_coordinates(*start_tile, uniformly_sampled=False)
+        return self.state
 
     """
     Rendering functions
     """
     def get_color(self, x, y, ignore_agent=False, ignore_terminals=False):
-        agent_x, agent_y = self.get_coordinates(self.agent_state)
+        agent_x, agent_y = self.get_coordinates(self.state)
         if (agent_x, agent_y) == (x, y) and not ignore_agent:
             return Colors.AGENT.value
         else:
@@ -185,11 +185,11 @@ class NavigationEnv(Environment, abc.ABC):
         """
         Render the whole-grid human view
         """
-        if self.agent_state is None:
+        if self.state is None:
             self.reset()
         img = self.get_environment_background(ignore_rewards=ignore_rewards)
         if not ignore_agent:
-            self.place_point(img, self.agent_state, Colors.AGENT.value)
+            self.place_point(img, self.state, Colors.AGENT.value)
         return img
 
     def place_point(self, image: np.ndarray, state, color: Union[np.ndarray, list], width=5):
@@ -272,5 +272,5 @@ class GoalReachingNavEnv(GoalReachingEnv, NavigationEnv):
         """
         image = self.wrapped_environment.render(ignore_agent=ignore_agent, ignore_rewards=True)
         if not ignore_goal:
-            self.place_point(image, self.agent_state, Colors.GOAL.value)
+            self.place_point(image, self.state, Colors.GOAL.value)
         return image
