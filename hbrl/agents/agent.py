@@ -71,6 +71,9 @@ class Agent:
     def reset(self):
         self.__init__(self.state_space, self.action_space, **self.init_params)
 
+    def copy(self):
+        return copy.deepcopy(self)
+
     def __deepcopy__(self, memo):
         cls = self.__class__
         result = cls.__new__(cls)
@@ -87,5 +90,9 @@ class Agent:
                 setattr(result, k, copy.deepcopy(v, memo))
         return result
 
-    def copy(self):
-        return copy.deepcopy(self)
+    def save(self, load_dir):
+        pass
+
+
+    def load(self, load_dir):
+        pass

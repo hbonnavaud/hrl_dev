@@ -5,7 +5,9 @@ import copy
 import numpy as np
 import torch
 from torch import optim
-from torch.nn import ReLU
+from torch.nn import ReLU, Tanh
+from gym.spaces import Box, Discrete
+from typing import Union
 
 
 class DQN(ValueBasedAgent):
@@ -16,7 +18,7 @@ class DQN(ValueBasedAgent):
 
     name = "DQN"
 
-    def __init__(self, state_space, action_space, **params):
+    def __init__(self, state_space: Union[Box, Discrete], action_space: Union[Box, Discrete], **params):
         """
         @param state_space: Environment's state space.
         @param action_space: Environment's action_space.
@@ -31,8 +33,6 @@ class DQN(ValueBasedAgent):
         self.epsilon_decay_delay = params.get("epsilon_decay_delay", 20)
         self.epsilon = None
         self.epsilon_decay_period = params.get("epsilon_decay_period", 1000)
-        self.layer_1_size = params.get("layer_1_size", 64)
-        self.layer_2_size = params.get("layer_2_size", 64)
 
         #  NEW, goals will be stored inside the replay buffer. We need a specific one with enough place to do so
         self.learning_rate = params.get("learning_rate", 0.001)
@@ -45,7 +45,10 @@ class DQN(ValueBasedAgent):
         self.total_steps = 0
 
         # NEW, The input observation size is multiplied by two because we need to also take the goal as input
-        self.model = MLP(self.state_size, self.layer_1_size, ReLU(), self.layer_2_size, ReLU(), self.nb_actions,
+        model_layers = params.get("model_layers", [64, ReLU(), 64, ReLU(), 64, ReLU()])
+        model_activation = params.get("model_activation", Tanh())
+        assert isinstance(model_activation, torch.nn.Module)
+        self.model = MLP(self.state_size, *model_layers, self.nb_actions, model_activation,
                          learning_rate=self.learning_rate, optimizer_class=optim.Adam, device=self.device).float()
 
         self.criterion = torch.nn.SmoothL1Loss()

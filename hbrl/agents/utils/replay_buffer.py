@@ -12,7 +12,7 @@ def to_tensor(data_list, device):
 class ReplayBuffer:
     def __init__(self, capacity, device, same_size_data=True):
         assert device is not None
-        self.capacity = capacity  # capacity of the buffer
+        self.capacity = int(capacity)  # capacity of the buffer
         self.device = device
         self.data = []
         self.index = 0  # index of the next cell to be filled

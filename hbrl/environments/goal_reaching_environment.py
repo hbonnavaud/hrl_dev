@@ -20,7 +20,7 @@ class GoalReachingEnv(Environment, ABC):
         if isinstance(self.goal_space, Box):
             if isinstance(reachability_threshold, list):
                 reachability_threshold = np.array(reachability_threshold)
-            if isinstance(reachability_threshold, np.array):
+            if isinstance(reachability_threshold, np.ndarray):
                 assert self.reachability_threshold.shape[0] == self.goal_size
             self.reachability_threshold = reachability_threshold
         self.sparse_reward = sparse_reward
@@ -38,7 +38,7 @@ class GoalReachingEnv(Environment, ABC):
         return self.goal_space.shape[0]
 
     def sample_goal(self):
-        return self.state_space.sample()
+        return self.goal_space.sample()
 
     def reset(self):
         self.wrapped_environment.reset()
@@ -46,7 +46,7 @@ class GoalReachingEnv(Environment, ABC):
         return self.state, self.goal
 
     def step(self, action):
-        state, reward, done = self.navigation_environment.step(action)
+        state, reward, done = self.wrapped_environment.step(action)
         if done:
             return state, reward, done
 
@@ -54,9 +54,11 @@ class GoalReachingEnv(Environment, ABC):
             return state, 0, True
         else:
             reward = self.reward(state, action)
-            return state, 0, False
+            return state, reward, False
 
     def reached(self, state, goal=None) -> bool:
+        if goal is None:
+            goal = self.goal
         state_goal = self.get_goal_from_state(state)
         if isinstance(self.goal_space, Discrete):
             return state_goal == goal

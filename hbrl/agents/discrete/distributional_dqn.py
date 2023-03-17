@@ -7,6 +7,8 @@ from hbrl.agents.discrete.dqn import DQN
 from hbrl.agents.utils.mlp import MLP
 from torch import optim
 import torch.nn.functional as F
+from gym.spaces import Box, Discrete
+from typing import Union
 
 from hbrl.utils import create_dir
 
@@ -19,7 +21,7 @@ class DistributionalDQN(DQN):
 
     name = "Distributional DQN"
 
-    def __init__(self, state_space, action_space, **params):
+    def __init__(self, state_space: Union[Box, Discrete], action_space: Union[Box, Discrete], **params):
         """
         @param state_space: Environment's state space.
         @param action_space: Environment's action_space.
@@ -32,10 +34,10 @@ class DistributionalDQN(DQN):
         self.out_dist_abscissa = - np.linspace(0, self.out_dist_size, self.out_dist_size)
         self.out_dist_abscissa_steps = self.out_dist_size / (self.out_dist_size - 1)
 
+        model_layers = params.get("model_layers", [64, ReLU(), 64, ReLU(), 64, ReLU()])
         self.models = [
-            MLP(self.state_size, self.layer_1_size, ReLU(), self.layer_2_size, ReLU(),
-                         self.nb_actions * self.out_dist_size, learning_rate=self.learning_rate, optimizer_class=optim.Adam,
-                         device=self.device).float() for _ in range(self.nb_models)
+            MLP(self.state_size, model_layers, self.nb_actions * self.out_dist_size, learning_rate=self.learning_rate,
+                optimizer_class=optim.Adam, device=self.device).float() for _ in range(self.nb_models)
         ]
         self.target_models = [deepcopy(self.models[i]) for i in range(self.nb_models)]
         self.errors = {}

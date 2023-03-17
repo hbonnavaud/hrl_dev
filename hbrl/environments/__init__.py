@@ -9,6 +9,7 @@ try:
 except ImportError:
     pass
 
-from environment import Environment
-from goal_reaching_environment import GoalReachingEnv
-from navigation_environment import NavigationEnv, GoalReachingNavEnv
+from .environment import Environment
+from .goal_reaching_environment import GoalReachingEnv
+from .navigation_environment import NavigationEnv, GoalReachingNavEnv
+from .navigation_environments  import *

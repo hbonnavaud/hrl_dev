@@ -16,7 +16,7 @@ class PointEnv:
 
     def __init__(self, map_name:str = MapsIndex.EMPTY.value, action_noise=1.0, reset_anywhere=True):
         self.reset_anywhere = reset_anywhere
-        self.maze_map = np.array(importlib.import_module("environments.maps." + map_name).maze_array)
+        self.maze_map = np.array(importlib.import_module("hbrl.environments.maps." + map_name).maze_array)
         self.height, self.width = self.maze_map.shape
         self.action_noise = action_noise
         self.state_space = spaces.Box(low=np.array([- self.width / 2, - self.height / 2]),

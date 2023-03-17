@@ -3,7 +3,8 @@ from copy import deepcopy
 
 import numpy as np
 import torch
-from gym.spaces import Box
+from gym.spaces import Box, Discrete
+from typing import Union
 from torch.nn import ReLU, Tanh
 
 from hbrl.utils import create_dir
@@ -15,7 +16,7 @@ from torch import optim
 class DDPG(ValueBasedAgent):
     name = "DDPG"
 
-    def __init__(self, state_space, action_space, **params):
+    def __init__(self, state_space: Union[Box, Discrete], action_space: Union[Box, Discrete], **params):
         """
         @param state_space: Environment's state space.
         @param action_space: Environment's action_space.
@@ -28,17 +29,18 @@ class DDPG(ValueBasedAgent):
         self.critic_lr = params.get("critic_lr", 0.00025)
         self.tau = params.get("tau", 0.001)
         self.gamma = params.get("gamma", 0.99)
-        self.layer_1_size = params.get("layer1_size", 200)
-        self.layer_2_size = params.get("layer2_size", 150)
         self.noise_std = params.get("noise_std", 0.1)
         self.steps_before_target_update = params.get("steps_before_target_update", 5)
         self.steps_since_last_update = 0
 
-        self.actor = MLP(self.state_size, self.layer_1_size, ReLU(), self.layer_2_size, ReLU(),
-                         self.nb_actions, Tanh(), learning_rate=self.actor_lr, optimizer_class=optim.Adam,
-                         device=self.device).float()
-        self.critic = MLP(self.state_size + self.nb_actions, self.layer_1_size, ReLU(), self.layer_2_size, ReLU(), 1,
-                         learning_rate=self.critic_lr, optimizer_class=optim.Adam, device=self.device).float()
+        actor_layers = params.get("actor_layers", [64, ReLU(), 64, ReLU(), 64, ReLU()])
+        actor_activation = params.get("actor_activation", Tanh())
+        assert isinstance(actor_activation, torch.nn.Module)
+        self.actor = MLP(self.state_size, *actor_layers, self.nb_actions, actor_activation,
+                         learning_rate=self.actor_lr, optimizer_class=optim.Adam, device=self.device).float()
+        critic_layers = params.get("critic_layers", [64, ReLU(), 64, ReLU(), 64, ReLU()])
+        self.critic = MLP(self.state_size + self.nb_actions, *critic_layers, 1, learning_rate=self.critic_lr,
+                          optimizer_class=optim.Adam, device=self.device).float()
 
         self.target_actor = deepcopy(self.actor)
         self.target_critic = deepcopy(self.critic)

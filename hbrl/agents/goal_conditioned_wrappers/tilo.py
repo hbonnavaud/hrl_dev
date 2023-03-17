@@ -1,3 +1,4 @@
+import numpy as np
 from gym.spaces import Box
 from hbrl.agents.goal_conditioned_wrappers.her import HER
 
@@ -24,6 +25,13 @@ class TILO(HER):
             return self.state_space
 
     def get_features(self, states, goals):
+
+        if len(states.shape) == 1 and len(goals.shape) == 2:
+            states = np.repeat(states, goals.shape[0]).reshape(states.shape[0], goals.shape[0])
+        elif len(goals.shape) == 1 and len(states.shape) == 2:
+            goals = np.repeat(goals, states.shape[0]).reshape(goals.shape[0], states.shape[0])
+        assert states.shape[:-1] == goals.shape[:-1]
+
         features = states.copy()
         if len(states.shape) == 1:
             state_goal_diff = goals - states[self.state_to_goal_filter]

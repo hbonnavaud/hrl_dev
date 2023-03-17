@@ -14,6 +14,8 @@ from hbrl.agents.value_based_agent import ValueBasedAgent
 from torch import optim
 from torch.nn import functional
 from torch.distributions.normal import Normal
+from gym.spaces import Box, Discrete
+from typing import Union
 
 from hbrl.utils import create_dir
 
@@ -22,7 +24,7 @@ class SAC(ValueBasedAgent):
 
     name = "SAC"
 
-    def __init__(self, state_space, action_space, **params):
+    def __init__(self, state_space: Union[Box, Discrete], action_space: Union[Box, Discrete], **params):
         """
         @param state_space: Environment's state space.
         @param action_space: Environment's action_space.
@@ -41,8 +43,6 @@ class SAC(ValueBasedAgent):
             self.actor_alpha = alpha
         self.gamma = params.get("gamma", 0.99)
         self.tau = params.get("tau", 0.005)
-        self.layer_1_size = params.get("layer1_size", 250)
-        self.layer_2_size = params.get("layer2_size", 150)
         self.reward_scale = params.get("reward_scale", 15)
 
         self.policy_update_frequency = 2
@@ -51,14 +51,16 @@ class SAC(ValueBasedAgent):
         self.min_std = -20
         self.max_std = 2
 
-        self.actor = MLP(self.state_size, self.layer_1_size, ReLU(), self.layer_2_size, ReLU(),
-                         2 * self.nb_actions, Tanh(), learning_rate=self.actor_lr, optimizer_class=optim.Adam,
-                         device=self.device).float()
+        actor_layers = params.get("actor_layers", [64, ReLU(), 64, ReLU(), 64, ReLU()])
+        actor_activation = params.get("actor_activation", Tanh())
+        assert isinstance(actor_activation, torch.nn.Module)
+        self.actor = MLP(self.state_size, *actor_layers, 2 * self.nb_actions, actor_activation,
+                         learning_rate=self.actor_lr, optimizer_class=optim.Adam, device=self.device).float()
         self.target_actor = copy.deepcopy(self.actor)
 
-        self.critic = MLP(self.state_size + self.nb_actions, self.layer_1_size, ReLU(),
-                          self.layer_2_size, ReLU(), 1, learning_rate=self.critic_lr, optimizer_class=optim.Adam,
-                          device=self.device).float()
+        critic_layers = params.get("critic_layers", [64, ReLU(), 64, ReLU(), 64, ReLU()])
+        self.critic = MLP(self.state_size + self.nb_actions, *critic_layers, 1,
+                          learning_rate=self.critic_lr, optimizer_class=optim.Adam, device=self.device).float()
         self.target_critic = copy.deepcopy(self.critic)
 
         self.passed_logs = []

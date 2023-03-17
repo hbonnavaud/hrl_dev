@@ -19,7 +19,7 @@ class ValueBasedAgent(Agent, ABC):
         super().__init__(state_space, action_space, **params)
 
         self.batch_size = params.get("batch_size", 100)
-        self.buffer_max_size = params.get("buffer_max_size", int(1e5))
+        self.buffer_max_size = params.get("buffer_max_size", int(1e6))
         self.replay_buffer = ReplayBuffer(self.buffer_max_size, self.device)
 
     @abstractmethod
@@ -29,37 +29,6 @@ class ValueBasedAgent(Agent, ABC):
     @abstractmethod
     def learn(self):
         pass
-
-    def scale_action(self, actions: Union[np.ndarray, torch.Tensor], source_action_box: Box):
-        """
-        Scale an action within the given bounds action_low to action_high, to our action_space.
-        The result action is also clipped to fit in the action space in case the given action wasn't exactly inside
-        the given bounds.
-        Useless if our action space is discrete.
-        @return: scaled and clipped actions. WARNING: actions are both attribute and result. They are modified by the
-        function. They are also returned for better convenience.
-        """
-        assert isinstance(self.action_space, Box), \
-            "Scale_action is useless and cannot work if our action space is discrete."
-        assert isinstance(actions, np.ndarray) or isinstance(actions, torch.Tensor)
-        assert isinstance(source_action_box, Box)
-
-        source_low, source_high = source_action_box.low, source_action_box.high
-        target_low, target_high = self.action_space.low, self.action_space.high
-        if isinstance(actions, torch.Tensor):
-            source_low, source_high = torch.tensor(source_low), torch.tensor(source_high)
-            target_low, target_high = torch.tensor(target_low), torch.tensor(target_high)
-
-        # Scale action to the action space
-        source_range = source_high - source_low
-        target_range = target_high - target_low
-
-        scale = target_range / source_range
-        actions = actions * scale
-        actions = actions + (target_low - (source_low * scale))
-        clip_fun = np.clip if isinstance(actions, np.ndarray) else torch.clamp
-        actions = clip_fun(actions, target_low, target_high)
-        return actions
 
     def save_interaction(self, *interaction_data):
         """

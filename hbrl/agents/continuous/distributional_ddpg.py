@@ -7,6 +7,8 @@ from hbrl.agents.continuous.ddpg import DDPG
 from hbrl.agents.utils.mlp import MLP
 from torch import optim
 import torch.nn.functional as F
+from gym.spaces import Box, Discrete
+from typing import Union
 
 from hbrl.utils import create_dir
 
@@ -18,7 +20,7 @@ class DistributionalDDPG(DDPG):
 
     name = "Distributional DDPG"
 
-    def __init__(self, state_space, action_space, **params):
+    def __init__(self, state_space: Union[Box, Discrete], action_space: Union[Box, Discrete], **params):
         """
         @param state_space: Environment's state space.
         @param action_space: Environment's action_space.
@@ -29,8 +31,6 @@ class DistributionalDDPG(DDPG):
 
         # Set up parameters as described in sorb paper
         self.batch_size = params.get("batch_size", 64)
-        self.layer_1_size = params.get("layer1_size", 64)
-        self.layer_2_size = params.get("layer2_size", 64)
         self.replay_buffer_max_size = params.get("replay_buffer_max_size", 1000000)
         self.actor_lr = params.get("actor_lr", 1e-4)
         self.critic_lr = params.get("critic_lr", 1e-4)
@@ -42,15 +42,17 @@ class DistributionalDDPG(DDPG):
         self.out_dist_abscissa = - np.linspace(0, self.out_dist_size, self.out_dist_size)
         self.out_dist_abscissa_steps = self.out_dist_size / (self.out_dist_size - 1)
 
-        self.actor = MLP(self.state_size, self.layer_1_size, ReLU(), self.layer_2_size, ReLU(),
-                         self.nb_actions, Tanh(), learning_rate=self.actor_lr, optimizer_class=optim.Adam,
-                         device=self.device).float()
+        actor_layers = params.get("actor_layers", [64, ReLU(), 64, ReLU(), 64, ReLU()])
+        actor_activation = params.get("actor_activation", Tanh())
+        assert isinstance(actor_activation, torch.nn.Module)
+        self.actor = MLP(self.state_size, *actor_layers, self.nb_actions, actor_activation,
+                         learning_rate=self.actor_lr, optimizer_class=optim.Adam, device=self.device).float()
         self.target_actor = deepcopy(self.actor)
 
+        critic_layers = params.get("critic_layers", [64, ReLU(), 64, ReLU(), 64, ReLU()])
         self.critics = [
-            MLP(self.state_size + self.nb_actions, self.layer_1_size, ReLU(), self.layer_2_size, ReLU(),
-                self.out_dist_size, learning_rate=self.critic_lr, optimizer_class=optim.Adam,
-                device=self.device).float() for _ in range(self.nb_critics)
+            MLP(self.state_size + self.nb_actions, *critic_layers, self.out_dist_size, learning_rate=self.critic_lr,
+                optimizer_class=optim.Adam, device=self.device).float() for _ in range(self.nb_critics)
         ]
         self.target_critics = [deepcopy(self.critics[i]) for i in range(self.nb_critics)]
 

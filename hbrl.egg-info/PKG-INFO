@@ -1,6 +1,6 @@
 Metadata-Version: 2.1
 Name: hbrl
-Version: 0.0.3.post1
+Version: 0.0.10
 Summary: Library to do reinforcement learning in an easy to use way.
 Home-page: https://github.com/hbonnavaud/hbrl
 Author: Hedwin BONNAVAUD

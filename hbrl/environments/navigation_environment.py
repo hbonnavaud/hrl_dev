@@ -2,32 +2,27 @@ import abc
 import importlib
 import random
 from typing import Union
+from enum import Enum
 from scipy.spatial import distance
 from skimage.draw import line_aa
 import numpy as np
 from gym.spaces import Box, Discrete
-from environment import Environment
-from hbrl.environments import MapsIndex
-from enum import Enum
-
+from gym.vector.utils import batch_space
 from hbrl.environments.goal_reaching_environment import GoalReachingEnv
-
-
-class TileType(Enum):
-    EMPTY = 0
-    WALL = 1
-    START = 2
-    TERMINAL = 3
+from .environment import Environment
+from .maps.tile_type import TileType
+from .maps.maps_index import MapsIndex
 
 
 class Colors(Enum):
     EMPTY = [250, 250, 250]
     WALL = [50, 54, 51]
-    START = [213, 219, 214]
-    TERMINAL = [73, 179, 101]
     TILE_BORDER = [50, 54, 51]
+    START = [213, 219, 214]
     AGENT = [0, 0, 255]
-    GOAL = [255, 0, 0]
+    REWARD = [73, 179, 101]
+    GOAL = [73, 179, 101]
+    TERMINAL_FAIL = [255, 31, 31]
 
 
 class NavigationEnv(Environment, abc.ABC):
@@ -54,7 +49,7 @@ class NavigationEnv(Environment, abc.ABC):
                                high=np.concatenate((high, state_space.high)))
         self.action_space = action_space
 
-        super().__init__(state_space, action_space)
+        super().__init__(self.state_space, self.action_space)
 
     def get_state_from_coordinates(self, x, y, uniformly_sampled=True):
         """
@@ -65,11 +60,15 @@ class NavigationEnv(Environment, abc.ABC):
         assert self.is_valid_coordinates(x, y)
         x_value = x + .5 - self.width / 2
         y_value = - (y + .5 - self.height / 2)
-        if uniformly_sampled:
-            noise = np.random.uniform(-0.5, 0.5, (2,))
+        if isinstance(x, np.ndarray):
+            state = batch_space(self.state_space, x_value.shape[0]).sample()
         else:
-            noise = np.zeros(2)
-        return np.asarray([x_value, y_value]) + noise
+            state = self.state_space.sample()
+
+        state[..., :2] = np.asarray([x_value, y_value]).T
+        if uniformly_sampled:
+            state[:2] += np.random.uniform(-0.5, 0.5, (2,))
+        return state
 
     def get_coordinates(self, state):
         """
@@ -78,6 +77,11 @@ class NavigationEnv(Environment, abc.ABC):
         return round(state[0].item() -.5 + self.width / 2), round(- state[1].item() - .5 + self.height / 2)
 
     def is_valid_coordinates(self, x, y):
+        if isinstance(x, np.ndarray) and x.shape[0] > 1:
+            assert isinstance(y, np.ndarray)
+            assert len(x.shape) == 1
+            assert y.shape == x.shape
+            return (0 <= x).all() and (x < self.width).all() and (0 <= y).all() and (y < self.height).all()
         return 0 <= x < self.width and 0 <= y < self.height
 
     def is_valid_state(self, state):
@@ -90,9 +94,16 @@ class NavigationEnv(Environment, abc.ABC):
         assert self.is_valid_coordinates(x, y)
         return TileType(self.maze_map[y][x].item())
 
-    def is_terminal_tile(self, x: int, y: int) -> bool:
-        assert self.is_valid_coordinates(x, y)
-        return self.get_tile_type(x, y) == TileType.TERMINAL
+    def get_reward_done(self, state) -> (float, bool):
+        tile_type = self.get_tile_type(*self.get_coordinates(state))
+        done = tile_type == TileType.TERMINAL_FAIL
+        if tile_type == TileType.TERMINAL_FAIL:
+            reward = -10
+        elif tile_type == TileType.REWARD:
+            reward = 1
+        else:
+            reward = 0
+        return reward, done
 
     @abc.abstractmethod
     def step(self, action):
@@ -109,22 +120,19 @@ class NavigationEnv(Environment, abc.ABC):
     """
     Rendering functions
     """
-    def get_color(self, x, y, ignore_agent=False, ignore_terminals=False):
+    def get_color(self, x, y, ignore_agent=False, ignore_rewards=False):
         agent_x, agent_y = self.get_coordinates(self.state)
         if (agent_x, agent_y) == (x, y) and not ignore_agent:
             return Colors.AGENT.value
         else:
             tile_type = self.get_tile_type(x, y)
-            if tile_type == TileType.START:
-                return Colors.START.value
-            elif tile_type == TileType.WALL:
-                return Colors.WALL.value
-            elif tile_type == TileType.EMPTY:
-                return Colors.EMPTY.value
-            elif tile_type == TileType.TERMINAL:
-                return Colors.EMPTY.value if ignore_terminals else Colors.TERMINAL.value
+            if tile_type == TileType.REWARD:
+                return Colors.EMPTY.value if ignore_rewards else Colors.REWARDS.value
             else:
-                raise AttributeError("Unknown tile type")
+                try:
+                    return Colors.__getattr__(tile_type.name).value
+                except AttributeError as e:
+                    raise AttributeError("Unknown tile type")
 
     def set_tile_color(self, image_array: np.ndarray, x, y, color, tile_size=10, border_size=0) -> np.ndarray:
         """
@@ -166,7 +174,7 @@ class NavigationEnv(Environment, abc.ABC):
         # Render the grid
         for y in range(self.height):
             for x in range(self.width):
-                cell_color = self.get_color(x, y, ignore_agent=True, ignore_terminals=ignore_rewards)
+                cell_color = self.get_color(x, y, ignore_agent=True, ignore_rewards=ignore_rewards)
                 img = self.set_tile_color(img, x, y, cell_color)
         return img
 
@@ -201,25 +209,29 @@ class NavigationEnv(Environment, abc.ABC):
         param color: Color to give to the pixels that compose the point.
         param width: Width of the circle (in pixels).
         """
+        assert isinstance(state, np.ndarray)
+        assert len(state.shape) == 1
+        state = state[:2]
+
         if isinstance(color, list):
             color = np.array(color)
 
-        center_x, center_y = self.get_coordinates(state)
-        center_x = (center_x + 0.5) / self.width
-        center_y = (center_y + 0.5) / self.height
-        center_y, center_x = (image.shape[:2] * np.array([center_y, center_x])).astype(int)
+        state_space_range = (self.state_space.high - self.state_space.low)[:2]
+        center = (state - self.state_space.low[:2]) / state_space_range
+        center[1] = 1 - center[1]
+        center_y, center_x = (image.shape[:2] * np.flip(center)).astype(int)
 
         # Imagine a square of size width * width, with the coordinates computed above as a center. Iterate through
         # each pixel inside this square to
-        radius = round(width / 2) + 1
+        radius = width
         for i in range(center_x - radius, center_x + radius):
             for j in range(center_y - radius, center_y + radius):
-                if distance.euclidean((i + 0.5, j + 0.5), (center_x, center_y)) < radius:
+                dist = distance.euclidean((i, j), (center_x, center_y))
+                if dist < radius and 0 <= i < image.shape[1] and 0 <= j < image.shape[0]:
                     image[j, i] = color
-
         return image
 
-    def place_edge(self, image: np.ndarray, state_1, state_2, color: Union[np.ndarray, list]):
+    def place_edge(self, image: np.ndarray, state_1, state_2, color: Union[np.ndarray, list], width=40):
         """
         Modify the input image
         param image: Initial image that will be modified.
@@ -228,24 +240,28 @@ class NavigationEnv(Environment, abc.ABC):
         param color: Color to give to the pixels that compose the point.
         param width: Width of the circle (in pixels).
         """
+        assert isinstance(state_1, np.ndarray)
+        assert len(state_1.shape) == 1
+        assert isinstance(state_2, np.ndarray)
+        assert len(state_2.shape) == 1
+        state_1 = state_1[:2]
+        state_2 = state_2[:2]
+        if isinstance(color, list):
+            color = np.array(color)
+        state_space_range = (self.state_space.high - self.state_space.low)[:2]
 
-        color = np.array(color) if isinstance(color, list) else color
-        center_x_1, center_y_1 = self.get_coordinates(state_1)
-        center_x_1 = (center_x_1 + 0.5) / self.width
-        center_y_1 = (center_y_1 + 0.5) / self.height
-        center_y_1, center_x_1 = (image.shape[:2] * np.array([center_y_1, center_x_1])).astype(int)
+        center = (state_1 - self.state_space.low[:2]) / state_space_range
+        center[1] = 1 - center[1]
+        center_y_1, center_x_1 = (image.shape[:2] * np.flip(center)).astype(int)
 
-        center_x_2, center_y_2 = self.get_coordinates(state_2)
-        center_x_2 = (center_x_2 + 0.5) / self.width
-        center_y_2 = (center_y_2 + 0.5) / self.height
-        center_y_2, center_x_2 = (image.shape[:2] * np.array([center_y_2, center_x_2])).astype(int)
+        center = (state_2 - self.state_space.low[:2]) / state_space_range
+        center[1] = 1 - center[1]
+        center_y_2, center_x_2 = (image.shape[:2] * np.flip(center)).astype(int)
 
         rr, cc, val = line_aa(center_y_1, center_x_1, center_y_2, center_x_2)
         old = image[rr, cc]
         extended_val = np.tile(val, (3, 1)).T
         image[rr, cc] = (1 - extended_val) * old + extended_val * color
-
-        return image
 
 
 class GoalReachingNavEnv(GoalReachingEnv, NavigationEnv):
@@ -262,6 +278,12 @@ class GoalReachingNavEnv(GoalReachingEnv, NavigationEnv):
         assert isinstance(wrapped_environment, NavigationEnv)
         GoalReachingEnv.__init__(self, wrapped_environment, goal_space, sparse_reward)
 
+    def sample_goal(self):
+        goal_coordinates = np.flip(random.choice(np.argwhere(self.maze_map != 1)))
+        return self.get_goal_from_state(
+            self.get_state_from_coordinates(*goal_coordinates, uniformly_sampled=True)
+        )
+
     """
     Rendering functions
     """
@@ -272,5 +294,5 @@ class GoalReachingNavEnv(GoalReachingEnv, NavigationEnv):
         """
         image = self.wrapped_environment.render(ignore_agent=ignore_agent, ignore_rewards=True)
         if not ignore_goal:
-            self.place_point(image, self.state, Colors.GOAL.value)
+            self.place_point(image, self.goal, Colors.GOAL.value)
         return image
